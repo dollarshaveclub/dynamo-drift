@@ -85,6 +85,7 @@ type MyNewDynamoItem struct {
   LastName string `dynamodb:":ln"`
 }
 
+// Callbacks are executed once for each item in the target table
 func migrateUp(item drift.RawDynamoItem, action *drift.DrifterAction) {
   name := item["Name"]
   ns := strings.Split(name, " ")

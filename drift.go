@@ -24,7 +24,7 @@ type DynamoMigrationFunction func(item RawDynamoItem, action *DrifterAction) err
 // DynamoDrifterMigration models an individual migration
 type DynamoDrifterMigration struct {
 	Number      uint                    `dynamodb:"Number"`      // Monotonic number of the migration (ascending)
-	TableName   string                  `dynamodb:"TableName"`   //DynamoDB table the migration applies to
+	TableName   string                  `dynamodb:"TableName"`   // DynamoDB table the migration applies to
 	Description string                  `dynamodb:"Description"` // Free-form description of what the migration does
 	Callback    DynamoMigrationFunction `dynamodb:"-"`           // Callback for each item in the table
 }
@@ -89,7 +89,7 @@ func (dd *DynamoDrifter) findTable(table string) (bool, error) {
 	}
 }
 
-// Init creates the metadata table if necessary
+// Init creates the metadata table if necessary.
 // pread and pwrite are the provisioned read and write values to use with table creation, if necessary
 func (dd *DynamoDrifter) Init(pwrite, pread uint) error {
 	if dd.DynamoDB == nil {
@@ -299,9 +299,9 @@ func (dd *DynamoDrifter) run(ctx context.Context, migration *DynamoDrifterMigrat
 	return []error{}
 }
 
-// Run runs an individual migration at the specified concurrency and blocks until finished
-// concurrency controls the number of table items processed concurrently (value of one will guarantee order of migration actions)
-// failOnFirstError causes Run to abort on first error, otherwise the errors will be queued and reported only after all items have been processed
+// Run runs an individual migration at the specified concurrency and blocks until finished.
+// concurrency controls the number of table items processed concurrently (value of one will guarantee order of migration actions).
+// failOnFirstError causes Run to abort on first error, otherwise the errors will be queued and reported only after all items have been processed.
 func (dd *DynamoDrifter) Run(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool) []error {
 	if dd.DynamoDB == nil {
 		return []error{fmt.Errorf("DynamoDB client is required")}
@@ -357,17 +357,19 @@ type actionQueue struct {
 }
 
 // DrifterAction is an object useful for performing actions within the migration callback. All actions performed by methods on DrifterAction are queued and performed *after* all existing items have been iterated over and callbacks performed.
-// DrifterAction can be used in multiple goroutines by the callback, but must not be retained after the callback returns
-// If concurrency > 1, order of queued operations cannot be guaranteed
+// DrifterAction can be used in multiple goroutines by the callback, but must not be retained after the callback returns.
+// If concurrency > 1, order of queued operations cannot be guaranteed.
 type DrifterAction struct {
 	dyn *dynamodb.DynamoDB
 	aq  actionQueue
 }
 
-// Update mutates the given keys using fields and updateExpression
-// keys and values are arbitrary structs with "dynamodb" annotations. IMPORTANT: annotation names must match the names used in updateExpression
-// updateExpression is the native DynamoDB update expression. Ex: "SET foo = :bar" (in this example keys must have a field annotated "foo" and values must have a field annotated ":bar")
+// Update mutates the given keys using fields and updateExpression.
+// keys and values are arbitrary structs with "dynamodb" annotations. IMPORTANT: annotation names must match the names used in updateExpression.
+// updateExpression is the native DynamoDB update expression. Ex: "SET foo = :bar" (in this example keys must have a field annotated "foo" and values must have a field annotated ":bar").
+//
 // Required: keys, values, updateExpression
+//
 // Optional: expressionAttributeNames (used if a value name is reserved keyword), tableName (defaults to migration table)
 func (da *DrifterAction) Update(keys interface{}, values interface{}, updateExpression string, expressionAttributeNames map[string]string, tableName string) error {
 	mkeys, err := dynamodbattribute.MarshalMap(keys)
@@ -401,9 +403,9 @@ func (da *DrifterAction) Update(keys interface{}, values interface{}, updateExpr
 	return nil
 }
 
-// Insert inserts item into the specified table
-// item is an arbitrary struct with "dynamodb" annotations
-// tableName is optional (defaults to migration table)
+// Insert inserts item into the specified table.
+// item is an arbitrary struct with "dynamodb" annotations.
+// tableName is optional (defaults to migration table).
 func (da *DrifterAction) Insert(item interface{}, tableName string) error {
 	mitem, err := dynamodbattribute.MarshalMap(item)
 	if err != nil {
@@ -420,9 +422,9 @@ func (da *DrifterAction) Insert(item interface{}, tableName string) error {
 	return nil
 }
 
-// Delete deletes the specified item(s)
-// keys is an arbitrary struct with "dynamodb" annotations
-// tableName is optional (defaults to migration table)
+// Delete deletes the specified item(s).
+// keys is an arbitrary struct with "dynamodb" annotations.
+// tableName is optional (defaults to migration table).
 func (da *DrifterAction) Delete(keys interface{}, tableName string) error {
 	mkeys, err := dynamodbattribute.MarshalMap(keys)
 	if err != nil {
