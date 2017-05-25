@@ -1,0 +1,17 @@
+[
+  {
+    "number": 2,
+    "tablename": "testtable",
+    "description": "foo"
+  },
+  {
+    "number": 0,
+    "tablename": "testtable",
+    "description": "bar"
+  },
+  {
+    "number": 1,
+    "tablename": "testtable",
+    "description": "baz"
+  }
+]

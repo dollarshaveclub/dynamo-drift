@@ -23,10 +23,10 @@ type DynamoMigrationFunction func(item RawDynamoItem, action *DrifterAction) err
 
 // DynamoDrifterMigration models an individual migration
 type DynamoDrifterMigration struct {
-	Number      uint                    `dynamodb:"Number"`      // Monotonic number of the migration (ascending)
-	TableName   string                  `dynamodb:"TableName"`   // DynamoDB table the migration applies to
-	Description string                  `dynamodb:"Description"` // Free-form description of what the migration does
-	Callback    DynamoMigrationFunction `dynamodb:"-"`           // Callback for each item in the table
+	Number      uint                    `dynamodbav:"Number" json:"number"`           // Monotonic number of the migration (ascending)
+	TableName   string                  `dynamodbav:"TableName" json:"tablename"`     // DynamoDB table the migration applies to
+	Description string                  `dynamodbav:"Description" json:"description"` // Free-form description of what the migration does
+	Callback    DynamoMigrationFunction `dynamodbav:"-" json:"-"`                     // Callback for each item in the table
 }
 
 // DynamoDrifter is the object that manages and performs migrations
@@ -43,14 +43,6 @@ func (dd *DynamoDrifter) createMetaTable(pwrite, pread uint, metatable string) e
 			&dynamodb.AttributeDefinition{
 				AttributeName: aws.String("Number"),
 				AttributeType: aws.String("N"),
-			},
-			&dynamodb.AttributeDefinition{
-				AttributeName: aws.String("TableName"),
-				AttributeType: aws.String("S"),
-			},
-			&dynamodb.AttributeDefinition{
-				AttributeName: aws.String("Description"),
-				AttributeType: aws.String("S"),
 			},
 		},
 		KeySchema: []*dynamodb.KeySchemaElement{
@@ -194,7 +186,7 @@ func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrif
 	si := &dynamodb.ScanInput{
 		ConsistentRead: aws.Bool(true),
 		TableName:      &migration.TableName,
-		Limit:          aws.Int64(int64(concurrency)),
+		Limit:          aws.Int64(int64(concurrency) * 100),
 	}
 	for {
 		so, err := dd.DynamoDB.Scan(si)
@@ -221,10 +213,60 @@ func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrif
 }
 
 func (dd *DynamoDrifter) doAction(ctx context.Context, params ...interface{}) error {
-	return nil
+	if len(params) != 2 {
+		return fmt.Errorf("bad parameter length: %v (want 2)", len(params))
+	}
+	action, ok := params[0].(*action)
+	if !ok {
+		return fmt.Errorf("bad type for *action: %T", params[0])
+	}
+	tn, ok := params[1].(string)
+	if !ok {
+		return fmt.Errorf("bad type for tablename: %T", params[1])
+	}
+	if action.tableName != "" {
+		tn = action.tableName
+	}
+	switch action.atype {
+	case updateAction:
+		uii := &dynamodb.UpdateItemInput{
+			TableName:                 &tn,
+			Key:                       action.keys,
+			UpdateExpression:          aws.String(action.updExpr),
+			ExpressionAttributeValues: action.values,
+			ExpressionAttributeNames:  action.expAttrNames,
+		}
+		_, err := dd.DynamoDB.UpdateItem(uii)
+		if err != nil {
+			return fmt.Errorf("error updating item: %v", err)
+		}
+		return nil
+	case insertAction:
+		pii := &dynamodb.PutItemInput{
+			TableName: &tn,
+			Item:      action.item,
+		}
+		_, err := dd.DynamoDB.PutItem(pii)
+		if err != nil {
+			return fmt.Errorf("error inserting item: %v", err)
+		}
+		return nil
+	case deleteAction:
+		dii := &dynamodb.DeleteItemInput{
+			TableName: &tn,
+			Key:       action.keys,
+		}
+		_, err := dd.DynamoDB.DeleteItem(dii)
+		if err != nil {
+			return fmt.Errorf("error deleting item: %v", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown action type: %v", action.atype)
+	}
 }
 
-func (dd *DynamoDrifter) executeActions(ctx context.Context, da *DrifterAction, concurrency uint) []error {
+func (dd *DynamoDrifter) executeActions(ctx context.Context, migration *DynamoDrifterMigration, da *DrifterAction, concurrency uint) []error {
 	ec := errorCollector{}
 	jm := jobmanager.New()
 	jm.ErrorHandler = &ec
@@ -234,7 +276,7 @@ func (dd *DynamoDrifter) executeActions(ctx context.Context, da *DrifterAction, 
 		j := &jobmanager.Job{
 			Job: dd.doAction,
 		}
-		jm.AddJob(j, action)
+		jm.AddJob(j, &action, migration.TableName)
 	}
 	jm.Run(ctx)
 	return ec.errs
@@ -258,6 +300,7 @@ func (dd *DynamoDrifter) insertMetaItem(m *DynamoDrifterMigration) error {
 
 func (dd *DynamoDrifter) deleteMetaItem(m *DynamoDrifterMigration) error {
 	di := &dynamodb.DeleteItemInput{
+		TableName: &dd.MetaTableName,
 		Key: map[string]*dynamodb.AttributeValue{
 			"Number": &dynamodb.AttributeValue{
 				N: aws.String(strconv.Itoa(int(m.Number))),
@@ -292,7 +335,7 @@ func (dd *DynamoDrifter) run(ctx context.Context, migration *DynamoDrifterMigrat
 	if len(errs) != 0 {
 		return errs
 	}
-	errs = dd.executeActions(ctx, da, concurrency)
+	errs = dd.executeActions(ctx, migration, da, concurrency)
 	if len(errs) != 0 {
 		return errs
 	}
