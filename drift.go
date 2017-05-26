@@ -81,7 +81,7 @@ func (dd *DynamoDrifter) findTable(table string) (bool, error) {
 	}
 }
 
-// Init creates the metadata table if necessary.
+// Init creates the metadata table if necessary. It is safe to run Init multiple times (it's a noop if metadata table already exists).
 // pread and pwrite are the provisioned read and write values to use with table creation, if necessary
 func (dd *DynamoDrifter) Init(pwrite, pread uint) error {
 	if dd.DynamoDB == nil {
