@@ -408,12 +408,13 @@ type DrifterAction struct {
 }
 
 // Update mutates the given keys using fields and updateExpression.
-// keys and values are arbitrary structs with "dynamodb" annotations. IMPORTANT: annotation names must match the names used in updateExpression.
+// keys and values are arbitrary structs with "dynamodbav" annotations. IMPORTANT: annotation names must match the names used in updateExpression.
 // updateExpression is the native DynamoDB update expression. Ex: "SET foo = :bar" (in this example keys must have a field annotated "foo" and values must have a field annotated ":bar").
+// expressionAttributeNames is optional but used if item attribute names are reserved keywords. For example: "SET #n = :name", expressionAttributeNames: map[string]string{"#n":"Name"}.
 //
 // Required: keys, values, updateExpression
 //
-// Optional: expressionAttributeNames (used if a value name is reserved keyword), tableName (defaults to migration table)
+// Optional: expressionAttributeNames, tableName (defaults to migration table)
 func (da *DrifterAction) Update(keys interface{}, values interface{}, updateExpression string, expressionAttributeNames map[string]string, tableName string) error {
 	mkeys, err := dynamodbattribute.MarshalMap(keys)
 	if err != nil {
@@ -448,7 +449,7 @@ func (da *DrifterAction) Update(keys interface{}, values interface{}, updateExpr
 }
 
 // Insert inserts item into the specified table.
-// item is an arbitrary struct with "dynamodb" annotations.
+// item is an arbitrary struct with "dynamodbav" annotations.
 // tableName is optional (defaults to migration table).
 func (da *DrifterAction) Insert(item interface{}, tableName string) error {
 	mitem, err := dynamodbattribute.MarshalMap(item)
@@ -467,7 +468,7 @@ func (da *DrifterAction) Insert(item interface{}, tableName string) error {
 }
 
 // Delete deletes the specified item(s).
-// keys is an arbitrary struct with "dynamodb" annotations.
+// keys is an arbitrary struct with "dynamodbav" annotations.
 // tableName is optional (defaults to migration table).
 func (da *DrifterAction) Delete(keys interface{}, tableName string) error {
 	mkeys, err := dynamodbattribute.MarshalMap(keys)
