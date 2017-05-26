@@ -73,40 +73,12 @@ func main() {
   fmt.Printf("migrations already applied: %v\n", len(migrations)) // "migrations already applied: 0"
 }
 
-type MyDynamoKey struct {
-  ID int `dynamodb:"ID"`
-}
-
-type MyOldDynamoItem struct {
-  Name string `dynamodb:":n"`
-}
-
-type MyNewDynamoItem struct {
-  FirstName string `dynamodb:":fn"`
-  LastName string `dynamodb:":ln"`
-}
-
 // Callbacks are executed once for each item in the target table
 func migrateUp(item drift.RawDynamoItem, action *drift.DrifterAction) {
-  name := item["Name"]
-  ns := strings.Split(name, " ")
-  newitem := MyNewDynamoItem{
-    FirstName: ns[0],
-    LastName: ns[1],
-  }
-  key := MyDynamoKey{
-    ID: item["ID"],
-  }
-  action.Update(key, newitem, "SET FirstName = :fn, LastName = :ln", nil, "")
+  // modify this table item somehow
 }
 
 func migrateDown(item drift.RawDynamoItem, action *drift.DrifterAction) {
-  olditem := MyOldDynamoItem{
-    Name: item["FirstName"] + item["LastName"],
-  }
-  key := MyDynamoKey{
-    ID: item["ID"],
-  }
-  action.Update(key, olditem, "SET Name = :n REMOVE FirstName, LastName", nil, "")
+  // do something to undo migration
 }
 ```
