@@ -144,7 +144,7 @@ func (dd *DynamoDrifter) doCallback(ctx context.Context, params ...interface{}) 
 	if !ok {
 		return fmt.Errorf("bad type for DynamoMigrationFunction: %T", params[0])
 	}
-	item, ok := params[1].(RawDynamoItem)
+	item, ok := params[1].(map[string]*dynamodb.AttributeValue)
 	if !ok {
 		return fmt.Errorf("bad type for RawDynamoItem: %T", params[1])
 	}
@@ -272,11 +272,11 @@ func (dd *DynamoDrifter) executeActions(ctx context.Context, migration *DynamoDr
 	jm.ErrorHandler = &ec
 	jm.Concurrency = concurrency
 	jm.Identifier = "migration-actions"
-	for _, action := range da.aq.q {
+	for i := range da.aq.q {
 		j := &jobmanager.Job{
 			Job: dd.doAction,
 		}
-		jm.AddJob(j, &action, migration.TableName)
+		jm.AddJob(j, &(da.aq.q[i]), migration.TableName)
 	}
 	jm.Run(ctx)
 	return ec.errs
@@ -427,7 +427,8 @@ func (da *DrifterAction) Update(keys interface{}, values interface{}, updateExpr
 		return fmt.Errorf("updateExpression is required")
 	}
 	var ean map[string]*string
-	if expressionAttributeNames != nil {
+	if expressionAttributeNames != nil && len(expressionAttributeNames) > 0 {
+		ean = map[string]*string{}
 		for k, v := range expressionAttributeNames {
 			ean[k] = &v
 		}
