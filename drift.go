@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
-	"github.com/dollarshaveclub/amino/src/jobmanager"
+	"github.com/dollarshaveclub/jobmanager"
 )
 
 // RawDynamoItem models an item from DynamoDB as returned by the API
