@@ -8,3 +8,10 @@ machine:
     - tar -xzf dynamodb-local.tgz
     - java -Djava.library.path=./DynamoDBLocal_lib -jar DynamoDBLocal.jar -sharedDb:
         background: true
+
+test:
+  override:
+    # so circle doesn't run tests for all dependencies
+    - go get -v
+    - go build
+    - go test -v -race -cover
