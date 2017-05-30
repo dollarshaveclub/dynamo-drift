@@ -3,6 +3,9 @@ package jobmanager_test
 import (
 	"context"
 	"errors"
+	"log"
+	"os"
+	"sync"
 	"testing"
 
 	"github.com/dollarshaveclub/jobmanager"
@@ -17,14 +20,21 @@ func newTestJob(errors []error) *testJob {
 }
 
 type testJob struct {
+	sync.Mutex
 	errors  []error
 	current int
 }
 
 func (t *testJob) next() error {
-	err := t.errors[t.current]
+	t.Lock()
+	defer t.Unlock()
+	if len(t.errors) > t.current {
+		err := t.errors[t.current]
+		t.current++
+		return err
+	}
 	t.current++
-	return err
+	return nil
 }
 
 func (t *testJob) totalCalls() int {
@@ -57,12 +67,13 @@ func TestErrorRetries(t *testing.T) {
 	e := errors.New("test error")
 	jobStub := newTestJob([]error{e, e, nil})
 	job := &jobmanager.Job{
+		Name:            "testjob",
 		Job:             jobStub.getFunc(),
 		Retries:         2,
 		RetryableErrors: []error{e},
 		RetryFunc:       jobmanager.DoNothing,
+		Logger:          log.New(os.Stderr, "", log.LstdFlags),
 	}
-
 	if err := job.ProcessJob(context.TODO()); err != nil {
 		t.Fatalf("expected %s, got %s", e, err)
 	}
@@ -76,10 +87,12 @@ func TestSubstringRetries(t *testing.T) {
 	e := errors.New("test error")
 	jobStub := newTestJob([]error{e, e, nil})
 	job := &jobmanager.Job{
+		Name:                     "testjob",
 		Job:                      jobStub.getFunc(),
 		Retries:                  2,
 		RetryableErrorSubstrings: []string{"test error"},
 		RetryFunc:                jobmanager.DoNothing,
+		Logger:                   log.New(os.Stderr, "", log.LstdFlags),
 	}
 
 	if err := job.ProcessJob(context.TODO()); err != nil {
@@ -95,9 +108,11 @@ func TestPlainRetries(t *testing.T) {
 	e := errors.New("test error")
 	jobStub := newTestJob([]error{e, e, nil})
 	job := &jobmanager.Job{
+		Name:      "testjob",
 		Job:       jobStub.getFunc(),
 		Retries:   2,
 		RetryFunc: jobmanager.DoNothing,
+		Logger:    log.New(os.Stderr, "", log.LstdFlags),
 	}
 
 	if err := job.ProcessJob(context.TODO()); err != nil {
@@ -172,5 +187,27 @@ func TestJMRunProcessesAllJobs(t *testing.T) {
 	}
 	if jobStub3.totalCalls() != 2 {
 		t.Fatalf("expected 2 job stub calls")
+	}
+}
+
+func TestJMRunJobMultipleTimes(t *testing.T) {
+	options := func(jm *jobmanager.JobManager) {
+		jm.Concurrency = 2
+	}
+	m := jobmanager.New(options)
+
+	jobStub1 := newTestJob([]error{})
+	job1 := &jobmanager.Job{
+		Job:       jobStub1.getFunc(),
+		Retries:   2,
+		RetryFunc: jobmanager.DoNothing,
+	}
+	args := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	for i := range args {
+		m.AddJob(job1, &args[i])
+	}
+	m.Run(context.TODO())
+	if jobStub1.totalCalls() != len(args) {
+		t.Fatalf("expected %v job stub calls", len(args))
 	}
 }

@@ -46,11 +46,24 @@ var ExponentialBackoff RetryFunc = func(ctx context.Context, retryNum uint) {
 	}
 }
 
+// DoNothingWithErrorsHandler does nothing with error values
+type DoNothingWithErrorsHandler struct{}
+
+// HandleError does nothing
+func (dnwe DoNothingWithErrorsHandler) HandleError(err error) error {
+	return nil
+}
+
+// DoNothingWithErrors is the default error handler if none is provided.
+var DoNothingWithErrors DoNothingWithErrorsHandler
+
 // DoNothing is a RetryFunc that does nothing in between retries.
 var DoNothing RetryFunc = func(_ context.Context, _ uint) {}
 
-// ProcessJob processes a Job taking into account the retry behavior.
-func (j *Job) ProcessJob(ctx context.Context, args ...interface{}) error {
+func (j *Job) setupJobDefaults() {
+	if j == nil {
+		return
+	}
 	if j.Name == "" {
 		j.Name = "anonymous-job"
 	}
@@ -60,7 +73,13 @@ func (j *Job) ProcessJob(ctx context.Context, args ...interface{}) error {
 	if j.Logger == nil {
 		j.Logger = log.New(os.Stdout, "", log.LstdFlags)
 	}
+	if j.ErrorHandler == nil {
+		j.ErrorHandler = DoNothingWithErrors
+	}
+}
 
+// ProcessJob processes a Job taking into account the retry behavior.
+func (j *Job) ProcessJob(ctx context.Context, args ...interface{}) error {
 	totalAttempts := j.Retries + 1
 	var err error
 
@@ -171,6 +190,10 @@ func (m *JobManager) AddJob(j *Job, args ...interface{}) {
 	m.Lock()
 	defer m.Unlock()
 
+	if j == nil {
+		return
+	}
+	j.setupJobDefaults()
 	m.jobs = append(m.jobs, j)
 	m.jobArgs = append(m.jobArgs, args)
 }
@@ -205,13 +228,6 @@ func (m *JobManager) _start(ctx context.Context) {
 				case <-ctx.Done():
 					return
 				default:
-				}
-
-				if msg.job.Logger == nil {
-					msg.job.Logger = m
-				}
-				if msg.job.ErrorHandler == nil {
-					msg.job.ErrorHandler = m.ErrorHandler
 				}
 				m.resultChan <- msg.job.ProcessJob(ctx, msg.args...)
 			}
