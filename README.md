@@ -1,8 +1,7 @@
 # dynamo-drift
 [![Go Documentation](http://img.shields.io/badge/go-documentation-blue.svg?style=flat-square)][godocs]
 
-[godocs]: https://godoc.org/github.com/dollarshaveclub/dynamo-drift
-
+[godocs]: https://godoc.org/github.com/dollarshaveclub/dynamo-drift [![CircleCI](https://circleci.com/gh/dollarshaveclub/dynamo-drift/tree/master.svg?style=svg)](https://circleci.com/gh/dollarshaveclub/dynamo-drift/tree/master)
 
 dynamo-drift is a minimalistic library for performing DynamoDB schema migrations.
 
