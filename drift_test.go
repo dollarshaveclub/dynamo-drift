@@ -283,7 +283,7 @@ func TestRunCallbacks(t *testing.T) {
 		Description: "split up names",
 		Callback:    testMigrateUp,
 	}
-	_, errs := dd.runCallbacks(context.Background(), migration, 2, false)
+	_, errs := dd.runCallbacks(context.Background(), migration, 2, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("error running callbacks: %v", errs)
 	}
@@ -309,11 +309,11 @@ func TestExecuteActions(t *testing.T) {
 		Description: "split up names",
 		Callback:    testMigrateUp,
 	}
-	da, errs := dd.runCallbacks(context.Background(), migration, 2, false)
+	da, errs := dd.runCallbacks(context.Background(), migration, 2, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("error running callbacks: %v", errs)
 	}
-	errs = dd.executeActions(context.Background(), migration, da, 2)
+	errs = dd.executeActions(context.Background(), migration, da, 2, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("error executing actions: %v", errs)
 	}
@@ -347,7 +347,7 @@ func TestRunMigration(t *testing.T) {
 		Description: "split up names",
 		Callback:    testMigrateUp,
 	}
-	errs := dd.Run(context.Background(), migration, 2, false)
+	errs := dd.Run(context.Background(), migration, 2, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("errors running migration: %v", errs)
 	}
@@ -381,7 +381,7 @@ func TestUndoMigration(t *testing.T) {
 		Description: "split up names",
 		Callback:    testMigrateUp,
 	}
-	errs := dd.Run(context.Background(), migration, 2, false)
+	errs := dd.Run(context.Background(), migration, 2, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("errors running migration: %v", errs)
 	}
@@ -398,7 +398,7 @@ func TestUndoMigration(t *testing.T) {
 		Description: "put names back together",
 		Callback:    testMigrateDown,
 	}
-	errs = dd.Undo(context.Background(), undoMigration, 2, false)
+	errs = dd.Undo(context.Background(), undoMigration, 2, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("errors running undo migration: %v", errs)
 	}
@@ -409,6 +409,36 @@ func TestUndoMigration(t *testing.T) {
 	err = testVerifyMigration(dd.DynamoDB, testTableB)
 	if err == nil {
 		t.Fatalf("verification of table B should have failed")
+	}
+}
+
+func TestMigrationProgress(t *testing.T) {
+	dd := DynamoDrifter{
+		MetaTableName: testMetaTable,
+		DynamoDB:      getTestDDBClient(),
+	}
+	err := setupTestTables(dd.DynamoDB)
+	if err != nil {
+		t.Fatalf("error setting up test tables: %v", err)
+	}
+	defer dropTestTables(dd.DynamoDB)
+	err = dd.Init(10, 10)
+	if err != nil {
+		t.Fatalf("error in Init: %v", err)
+	}
+	defer dropTestMetaTable(dd.DynamoDB)
+	migration := &DynamoDrifterMigration{
+		TableName:   testTableA,
+		Description: "split up names",
+		Callback:    testMigrateUp,
+	}
+	pchan := make(chan *MigrationProgress, 10)
+	errs := dd.Run(context.Background(), migration, 2, false, pchan)
+	if len(errs) != 0 {
+		t.Fatalf("errors running migration: %v", errs)
+	}
+	if len(pchan) != 2 {
+		t.Fatalf("bad lenght for pchan: %v", len(pchan))
 	}
 }
 
