@@ -173,8 +173,24 @@ func (ec *errorCollector) HandleError(err error) error {
 	return nil
 }
 
+func (dd *DynamoDrifter) progressMsg(cp, ae uint, cerrs, aerrs []error, progressChan chan *MigrationProgress) {
+	if progressChan != nil {
+		select {
+		case progressChan <- &MigrationProgress{
+			CallbacksProcessed: cp,
+			ActionsExecuted:    ae,
+			CallbackErrors:     cerrs,
+			ActionErrors:       aerrs,
+		}:
+			return
+		default:
+			return
+		}
+	}
+}
+
 // runCallbacks gets items from the target table in batches of size concurrency, populates a JobManager with them and then executes all jobs in parallel
-func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool) (*DrifterAction, []error) {
+func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool, progressChan chan *MigrationProgress) (*DrifterAction, []error) {
 	errs := []error{}
 	ec := errorCollector{}
 	da := &DrifterAction{}
@@ -188,6 +204,7 @@ func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrif
 		TableName:      &migration.TableName,
 		Limit:          aws.Int64(int64(concurrency) * 100),
 	}
+	var cp uint
 	for {
 		so, err := dd.DynamoDB.Scan(si)
 		if err != nil {
@@ -203,6 +220,8 @@ func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrif
 		if len(ec.errs) != 0 && failOnFirstError {
 			return nil, ec.errs
 		}
+		cp += uint(len(so.Items))
+		dd.progressMsg(cp, 0, ec.errs, nil, progressChan)
 		errs = append(errs, ec.errs...)
 		ec.clear()
 		if so.LastEvaluatedKey == nil {
@@ -266,19 +285,36 @@ func (dd *DynamoDrifter) doAction(ctx context.Context, params ...interface{}) er
 	}
 }
 
-func (dd *DynamoDrifter) executeActions(ctx context.Context, migration *DynamoDrifterMigration, da *DrifterAction, concurrency uint) []error {
+func (dd *DynamoDrifter) executeActions(ctx context.Context, migration *DynamoDrifterMigration, da *DrifterAction, concurrency uint, failonFirstError bool, progressChan chan *MigrationProgress) []error {
 	ec := errorCollector{}
-	jm := jobmanager.New()
-	jm.ErrorHandler = &ec
-	jm.Concurrency = concurrency
-	jm.Identifier = "migration-actions"
-	for i := range da.aq.q {
+	var jm *jobmanager.JobManager
+	getnewjm := func() { // you can only Run() a JobManager once
+		jm = jobmanager.New()
+		jm.ErrorHandler = &ec
+		jm.Concurrency = concurrency
+		jm.Identifier = "migration-actions"
+	}
+	getnewjm()
+	var i int
+	for i = range da.aq.q {
 		j := &jobmanager.Job{
 			Job: dd.doAction,
 		}
 		jm.AddJob(j, &(da.aq.q[i]), migration.TableName)
+		if i != 0 && i%10 == 0 {
+			jm.Run(ctx)
+			if len(ec.errs) != 0 && failonFirstError {
+				return ec.errs
+			}
+			getnewjm()
+			dd.progressMsg(0, uint(i+1), nil, ec.errs, progressChan)
+		} else {
+		}
 	}
-	jm.Run(ctx)
+	if i != 0 {
+		jm.Run(ctx)
+		dd.progressMsg(0, uint(i), nil, ec.errs, progressChan)
+	}
 	return ec.errs
 }
 
@@ -314,7 +350,7 @@ func (dd *DynamoDrifter) deleteMetaItem(m *DynamoDrifterMigration) error {
 	return nil
 }
 
-func (dd *DynamoDrifter) run(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool) []error {
+func (dd *DynamoDrifter) run(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool, progressChan chan *MigrationProgress) []error {
 	if migration == nil || migration.Callback == nil {
 		return []error{fmt.Errorf("migration is required")}
 	}
@@ -331,25 +367,37 @@ func (dd *DynamoDrifter) run(ctx context.Context, migration *DynamoDrifterMigrat
 	if !extant {
 		return []error{fmt.Errorf("table %v not found", migration.TableName)}
 	}
-	da, errs := dd.runCallbacks(ctx, migration, concurrency, failOnFirstError)
+	da, errs := dd.runCallbacks(ctx, migration, concurrency, failOnFirstError, progressChan)
 	if len(errs) != 0 {
 		return errs
 	}
-	errs = dd.executeActions(ctx, migration, da, concurrency)
+	errs = dd.executeActions(ctx, migration, da, concurrency, failOnFirstError, progressChan)
 	if len(errs) != 0 {
 		return errs
 	}
 	return []error{}
 }
 
+// MigrationProgress models periodic progress information communicated back to the caller
+type MigrationProgress struct {
+	CallbacksProcessed uint
+	ActionsExecuted    uint
+	CallbackErrors     []error
+	ActionErrors       []error
+}
+
 // Run runs an individual migration at the specified concurrency and blocks until finished.
 // concurrency controls the number of table items processed concurrently (value of one will guarantee order of migration actions).
 // failOnFirstError causes Run to abort on first error, otherwise the errors will be queued and reported only after all items have been processed.
-func (dd *DynamoDrifter) Run(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool) []error {
+// progressChan is an optional channel on which periodic MigrationProgress messages will be sent
+func (dd *DynamoDrifter) Run(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool, progressChan chan *MigrationProgress) []error {
 	if dd.DynamoDB == nil {
 		return []error{fmt.Errorf("DynamoDB client is required")}
 	}
-	errs := dd.run(ctx, migration, concurrency, failOnFirstError)
+	if progressChan != nil {
+		defer close(progressChan)
+	}
+	errs := dd.run(ctx, migration, concurrency, failOnFirstError, progressChan)
 	if len(errs) != 0 {
 		return errs
 	}
@@ -361,11 +409,11 @@ func (dd *DynamoDrifter) Run(ctx context.Context, migration *DynamoDrifterMigrat
 }
 
 // Undo "undoes" a migration by running the supplied migration but deletes the corresponding metadata record if successful
-func (dd *DynamoDrifter) Undo(ctx context.Context, undoMigration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool) []error {
+func (dd *DynamoDrifter) Undo(ctx context.Context, undoMigration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool, progressChan chan *MigrationProgress) []error {
 	if dd.DynamoDB == nil {
 		return []error{fmt.Errorf("DynamoDB client is required")}
 	}
-	errs := dd.run(ctx, undoMigration, concurrency, failOnFirstError)
+	errs := dd.run(ctx, undoMigration, concurrency, failOnFirstError, progressChan)
 	if len(errs) != 0 {
 		return errs
 	}
