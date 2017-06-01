@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -542,6 +543,102 @@ func TestMigrationProgress(t *testing.T) {
 	}
 	if len(pchan) != 2 {
 		t.Fatalf("bad lenght for pchan: %v", len(pchan))
+	}
+}
+
+func TestGetStringAttribute(t *testing.T) {
+	item := map[string]*dynamodb.AttributeValue{
+		"foo": &dynamodb.AttributeValue{
+			S: aws.String("omg"),
+		},
+	}
+	s, err := GetStringAttribute(item, "foo")
+	if err != nil {
+		t.Fatalf("error getting string: %v", err)
+	}
+	if s != "omg" {
+		t.Fatalf("bad string value")
+	}
+	_, err = GetStringAttribute(item, "jaja")
+	if err == nil {
+		t.Fatalf("expected key not found")
+	}
+}
+
+func TestGetNumberAttribute(t *testing.T) {
+	item := map[string]*dynamodb.AttributeValue{
+		"foo": &dynamodb.AttributeValue{
+			N: aws.String("123"),
+		},
+	}
+	n, err := GetNumberAttribute(item, "foo")
+	if err != nil {
+		t.Fatalf("error getting number: %v", err)
+	}
+	if n != "123" {
+		t.Fatalf("bad number value")
+	}
+	_, err = GetNumberAttribute(item, "jaja")
+	if err == nil {
+		t.Fatalf("expected key not found")
+	}
+}
+
+func TestGetBoolAttribute(t *testing.T) {
+	item := map[string]*dynamodb.AttributeValue{
+		"foo": &dynamodb.AttributeValue{
+			BOOL: aws.Bool(true),
+		},
+	}
+	b, err := GetBoolAttribute(item, "foo")
+	if err != nil {
+		t.Fatalf("error getting bool: %v", err)
+	}
+	if !b {
+		t.Fatalf("bad bool value")
+	}
+	_, err = GetBoolAttribute(item, "jaja")
+	if err == nil {
+		t.Fatalf("expected key not found")
+	}
+}
+
+func TestGetByteSliceAttribute(t *testing.T) {
+	item := map[string]*dynamodb.AttributeValue{
+		"foo": &dynamodb.AttributeValue{
+			B: []byte("bar"),
+		},
+	}
+	bs, err := GetByteSliceAttribute(item, "foo")
+	if err != nil {
+		t.Fatalf("error getting byte slice: %v", err)
+	}
+	if !bytes.Equal(bs, []byte("bar")) {
+		t.Fatalf("bad byte slice value")
+	}
+	_, err = GetByteSliceAttribute(item, "jaja")
+	if err == nil {
+		t.Fatalf("expected key not found")
+	}
+}
+
+func TestGetAttributeWrongType(t *testing.T) {
+	item := map[string]*dynamodb.AttributeValue{
+		"foo": &dynamodb.AttributeValue{
+			N: aws.String("123"),
+		},
+	}
+	_, err := GetBoolAttribute(item, "foo")
+	if err == nil {
+		t.Fatalf("expected error getting bool")
+	}
+	_, err = GetStringAttribute(item, "foo")
+	if err == nil {
+		t.Fatalf("expected error getting string")
+	}
+	_, err = GetByteSliceAttribute(item, "foo")
+	if err == nil {
+		t.Fatalf("expected error getting byte slice")
 	}
 }
 

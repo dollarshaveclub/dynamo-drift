@@ -547,3 +547,93 @@ func (da *DrifterAction) Delete(keys interface{}, tableName string) error {
 func (da *DrifterAction) DynamoDB() *dynamodb.DynamoDB {
 	return da.dyn
 }
+
+// getAttribute returns an attribute from a raw item
+func getAttribute(item RawDynamoItem, attr string, t interface{}) (interface{}, error) {
+	a, ok := item[attr]
+	if !ok {
+		return nil, fmt.Errorf("key not found: %v", attr)
+	}
+	var ap interface{}
+	switch t.(type) {
+	case string:
+		ap = a.S
+	case int:
+		ap = a.N
+	case bool:
+		ap = a.BOOL
+	case []byte:
+		ap = a.B
+	default:
+		return nil, fmt.Errorf("bad/unsupported type for t: %T", t)
+	}
+	return ap, nil
+}
+
+// GetStringAttribute returns a string attribute from the raw item, or error if not found or wrong type
+func GetStringAttribute(item RawDynamoItem, attr string) (string, error) {
+	si, err := getAttribute(item, attr, "")
+	if err != nil {
+		return "", fmt.Errorf("error getting attribute: %v", err)
+	}
+	switch v := si.(type) {
+	case *string:
+		if v == nil {
+			return "", fmt.Errorf("attribute is not a string")
+		}
+		return *v, nil
+	default:
+		return "", fmt.Errorf("unexpected type for value: %T", si)
+	}
+}
+
+// GetNumberAttribute returns a number attribute (as string) from the raw item, or error if not found or wrong type
+func GetNumberAttribute(item RawDynamoItem, attr string) (string, error) {
+	si, err := getAttribute(item, attr, int(0))
+	if err != nil {
+		return "", fmt.Errorf("error getting attribute: %v", err)
+	}
+	switch v := si.(type) {
+	case *string:
+		if v == nil {
+			return "", fmt.Errorf("attribute is not a number")
+		}
+		return *v, nil
+	default:
+		return "", fmt.Errorf("unexpected type for value: %T", si)
+	}
+}
+
+// GetBoolAttribute returns a string attribute from the raw item, or error if not found or wrong type
+func GetBoolAttribute(item RawDynamoItem, attr string) (bool, error) {
+	si, err := getAttribute(item, attr, true)
+	if err != nil {
+		return false, fmt.Errorf("error getting attribute: %v", err)
+	}
+	switch v := si.(type) {
+	case *bool:
+		if v == nil {
+			return false, fmt.Errorf("attribute is not a bool")
+		}
+		return *v, nil
+	default:
+		return false, fmt.Errorf("unexpected type for value: %T", si)
+	}
+}
+
+// GetByteSliceAttribute returns a string attribute from the raw item, or error if not found or wrong type
+func GetByteSliceAttribute(item RawDynamoItem, attr string) ([]byte, error) {
+	si, err := getAttribute(item, attr, []byte{})
+	if err != nil {
+		return nil, fmt.Errorf("error getting attribute: %v", err)
+	}
+	switch v := si.(type) {
+	case []byte:
+		if v == nil {
+			return nil, fmt.Errorf("attribute is not a byte slice")
+		}
+		return v, nil
+	default:
+		return nil, fmt.Errorf("unexpected type for value: %T", si)
+	}
+}
