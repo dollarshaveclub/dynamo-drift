@@ -465,6 +465,40 @@ func TestRunMigrationWithCallbackErrors(t *testing.T) {
 	}
 }
 
+func TestRunMigrationWithPremarshaledItem(t *testing.T) {
+	dd := DynamoDrifter{
+		MetaTableName: testMetaTable,
+		DynamoDB:      getTestDDBClient(),
+	}
+	err := setupTestTables(dd.DynamoDB)
+	if err != nil {
+		t.Fatalf("error setting up test tables: %v", err)
+	}
+	defer dropTestTables(dd.DynamoDB)
+	err = dd.Init(10, 10)
+	if err != nil {
+		t.Fatalf("error in Init: %v", err)
+	}
+	defer dropTestMetaTable(dd.DynamoDB)
+	migration := &DynamoDrifterMigration{
+		TableName:   testTableA,
+		Description: "split up names",
+		Callback:    testMigrateUpWithPremarshaledItem,
+	}
+	errs := dd.Run(context.Background(), migration, 2, false, nil)
+	if len(errs) != 0 {
+		t.Fatalf("errors running migration: %v", errs)
+	}
+	err = testVerifyMigration(dd.DynamoDB, testTableA)
+	if err != nil {
+		t.Fatalf("error verifying migration in table A: %v", err)
+	}
+	err = testVerifyMigration(dd.DynamoDB, testTableB)
+	if err != nil {
+		t.Fatalf("error verifying migration in table B: %v", err)
+	}
+}
+
 func TestUndoMigration(t *testing.T) {
 	dd := DynamoDrifter{
 		MetaTableName: testMetaTable,
@@ -738,6 +772,36 @@ func testMigrateUpWithActionErrors(item RawDynamoItem, action *DrifterAction) er
 		LastName:  ns[1],
 	}
 	err = action.Insert(insertitem, "TableDoesNotExist")
+	if err != nil {
+		return fmt.Errorf("error inserting item action: %v", err)
+	}
+	return action.Update(key, newitem, "SET FirstName = :fn, LastName = :ln", nil, "")
+}
+
+func testMigrateUpWithPremarshaledItem(item RawDynamoItem, action *DrifterAction) error {
+	name := *item["Name"].S
+	ns := strings.Split(name, " ")
+	newitem := TestUpdateNewDynamoItem{
+		FirstName: ns[0],
+		LastName:  ns[1],
+	}
+	id, err := strconv.Atoi(*item["ID"].N)
+	if err != nil {
+		return fmt.Errorf("bad id: %v", err)
+	}
+	key := TestDynamoKey{
+		ID: id,
+	}
+	insertitem := TestInsertDynamoItem{
+		ID:        id,
+		FirstName: ns[0],
+		LastName:  ns[1],
+	}
+	pmi, err := dynamodbattribute.MarshalMap(&insertitem)
+	if err != nil {
+		return fmt.Errorf("error premarshaling item: %v", err)
+	}
+	err = action.Insert(pmi, testTableB)
 	if err != nil {
 		return fmt.Errorf("error inserting item action: %v", err)
 	}

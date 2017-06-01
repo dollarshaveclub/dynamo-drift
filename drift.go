@@ -506,12 +506,19 @@ func (da *DrifterAction) Update(keys interface{}, values interface{}, updateExpr
 }
 
 // Insert inserts item into the specified table.
-// item is an arbitrary struct with "dynamodbav" annotations.
+// item is an arbitrary struct with "dynamodbav" annotations or a RawDynamoItem
 // tableName is optional (defaults to migration table).
 func (da *DrifterAction) Insert(item interface{}, tableName string) error {
-	mitem, err := dynamodbattribute.MarshalMap(item)
-	if err != nil {
-		return fmt.Errorf("error marshaling item: %v", err)
+	var err error
+	var mitem map[string]*dynamodb.AttributeValue
+	switch v := item.(type) {
+	case map[string]*dynamodb.AttributeValue:
+		mitem = v
+	default:
+		mitem, err = dynamodbattribute.MarshalMap(item)
+		if err != nil {
+			return fmt.Errorf("error marshaling item: %v", err)
+		}
 	}
 	ia := action{
 		atype:     insertAction,
