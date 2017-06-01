@@ -190,19 +190,22 @@ func (dd *DynamoDrifter) progressMsg(cp, ae uint, cerrs, aerrs []error, progress
 }
 
 // runCallbacks gets items from the target table in batches of size concurrency, populates a JobManager with them and then executes all jobs in parallel
-func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, failOnFirstError bool, progressChan chan *MigrationProgress) (*DrifterAction, []error) {
+func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrifterMigration, concurrency uint, scanLimit uint, failOnFirstError bool, progressChan chan *MigrationProgress) (*DrifterAction, []error) {
 	errs := []error{}
 	ec := errorCollector{}
 	da := &DrifterAction{}
-	jm := jobmanager.New()
-	jm.ErrorHandler = &ec
-	jm.Concurrency = concurrency
-	jm.Identifier = "migration-callbacks"
-
+	var jm *jobmanager.JobManager
+	getnewjm := func() {
+		jm = jobmanager.New()
+		jm.ErrorHandler = &ec
+		jm.Concurrency = concurrency
+		jm.Identifier = "migration-callbacks"
+	}
+	getnewjm()
 	si := &dynamodb.ScanInput{
 		ConsistentRead: aws.Bool(true),
 		TableName:      &migration.TableName,
-		Limit:          aws.Int64(int64(concurrency) * 100),
+		Limit:          aws.Int64(int64(scanLimit)),
 	}
 	var cp uint
 	for {
@@ -220,11 +223,12 @@ func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrif
 		if len(ec.errs) != 0 && failOnFirstError {
 			return nil, ec.errs
 		}
+		getnewjm()
 		cp += uint(len(so.Items))
 		dd.progressMsg(cp, 0, ec.errs, nil, progressChan)
 		errs = append(errs, ec.errs...)
 		ec.clear()
-		if so.LastEvaluatedKey == nil {
+		if len(so.LastEvaluatedKey) == 0 {
 			return da, errs
 		}
 		si.ExclusiveStartKey = so.LastEvaluatedKey
@@ -367,7 +371,8 @@ func (dd *DynamoDrifter) run(ctx context.Context, migration *DynamoDrifterMigrat
 	if !extant {
 		return []error{fmt.Errorf("table %v not found", migration.TableName)}
 	}
-	da, errs := dd.runCallbacks(ctx, migration, concurrency, failOnFirstError, progressChan)
+	defaultScanLimit := concurrency * 100
+	da, errs := dd.runCallbacks(ctx, migration, concurrency, defaultScanLimit, failOnFirstError, progressChan)
 	if len(errs) != 0 {
 		return errs
 	}

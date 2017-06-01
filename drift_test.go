@@ -5,9 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
+	"path"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -24,6 +27,27 @@ const (
 	testTableA    = "testtableA"
 	testTableB    = "testtableB"
 )
+
+func TestMain(m *testing.M) {
+	var exit int
+	defer func() {
+		os.Exit(exit)
+	}()
+	if os.Getenv("DYNAMODB_LOCAL_ALREADY_RUNNING") == "" {
+		dlp := os.Getenv("DYNAMODB_LOCAL_PATH")
+		if dlp == "" {
+			fmt.Printf("define DYNAMODB_LOCAL_PATH to point to path of DynamoDBLocal.jar")
+			os.Exit(1)
+		}
+		ctx, cncl := context.WithCancel(context.Background())
+		cmd := exec.CommandContext(ctx, "java", "-jar", path.Join(dlp, "DynamoDBLocal.jar"), "-sharedDb", "-inMemory")
+		defer func() { fmt.Printf("stopping DynamoDBLocal\n"); cncl(); cmd.Wait() }()
+		fmt.Printf("starting DynamoDBLocal\n")
+		cmd.Start()
+		time.Sleep(1500 * time.Millisecond)
+	}
+	exit = m.Run()
+}
 
 func getTestDDBClient() *dynamodb.DynamoDB {
 	creds := credentials.NewStaticCredentials("foo", "bar", "")
@@ -283,7 +307,34 @@ func TestRunCallbacks(t *testing.T) {
 		Description: "split up names",
 		Callback:    testMigrateUp,
 	}
-	_, errs := dd.runCallbacks(context.Background(), migration, 2, false, nil)
+	_, errs := dd.runCallbacks(context.Background(), migration, 2, 200, false, nil)
+	if len(errs) != 0 {
+		t.Fatalf("error running callbacks: %v", errs)
+	}
+}
+
+func TestRunCallbacksWithPaging(t *testing.T) {
+	dd := DynamoDrifter{
+		MetaTableName: testMetaTable,
+		DynamoDB:      getTestDDBClient(),
+	}
+	err := setupTestTables(dd.DynamoDB)
+	if err != nil {
+		t.Fatalf("error setting up test tables: %v", err)
+	}
+	defer dropTestTables(dd.DynamoDB)
+	err = dd.Init(10, 10)
+	if err != nil {
+		t.Fatalf("error in Init: %v", err)
+	}
+	defer dropTestMetaTable(dd.DynamoDB)
+	migration := &DynamoDrifterMigration{
+		TableName:   testTableA,
+		Description: "split up names",
+		Callback:    testMigrateUp,
+	}
+	// Scan limit of 1 to force paging
+	_, errs := dd.runCallbacks(context.Background(), migration, 2, 1, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("error running callbacks: %v", errs)
 	}
@@ -309,7 +360,7 @@ func TestExecuteActions(t *testing.T) {
 		Description: "split up names",
 		Callback:    testMigrateUp,
 	}
-	da, errs := dd.runCallbacks(context.Background(), migration, 2, false, nil)
+	da, errs := dd.runCallbacks(context.Background(), migration, 2, 200, false, nil)
 	if len(errs) != 0 {
 		t.Fatalf("error running callbacks: %v", errs)
 	}

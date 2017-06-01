@@ -1,6 +1,7 @@
 machine:
   environment:
     _JAVA_OPTIONS: "-Xms512m -Xmx1024m"
+    DYNAMODB_LOCAL_ALREADY_RUNNING: "true"
   java:
     version: openjdk7
   post:
