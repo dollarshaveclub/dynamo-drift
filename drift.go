@@ -309,7 +309,7 @@ func (dd *DynamoDrifter) executeActions(ctx context.Context, migration *DynamoDr
 			Job: dd.doAction,
 		}
 		jm.AddJob(j, &(da.aq.q[i]), migration.TableName)
-		if i != 0 && i%10 == 0 {
+		if i != 0 && i%(100*int(concurrency)) == 0 {
 			jm.Run(ctx)
 			if len(ec.errs) != 0 && failonFirstError {
 				return ec.errs
