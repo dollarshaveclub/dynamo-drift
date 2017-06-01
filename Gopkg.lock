@@ -11,7 +11,7 @@
   branch = "master"
   name = "github.com/dollarshaveclub/jobmanager"
   packages = ["."]
-  revision = "fd81c79a7d3d37fbb732086bc2f042e750c7d691"
+  revision = "382e3dfc65b126fef4708c8599a7eaa345466cb6"
 
 [[projects]]
   branch = "master"

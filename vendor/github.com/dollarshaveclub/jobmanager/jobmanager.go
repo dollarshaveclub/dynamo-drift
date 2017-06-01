@@ -60,24 +60,6 @@ var DoNothingWithErrors DoNothingWithErrorsHandler
 // DoNothing is a RetryFunc that does nothing in between retries.
 var DoNothing RetryFunc = func(_ context.Context, _ uint) {}
 
-func (j *Job) setupJobDefaults() {
-	if j == nil {
-		return
-	}
-	if j.Name == "" {
-		j.Name = "anonymous-job"
-	}
-	if j.RetryFunc == nil {
-		j.RetryFunc = ExponentialBackoff
-	}
-	if j.Logger == nil {
-		j.Logger = log.New(os.Stdout, "", log.LstdFlags)
-	}
-	if j.ErrorHandler == nil {
-		j.ErrorHandler = DoNothingWithErrors
-	}
-}
-
 // ProcessJob processes a Job taking into account the retry behavior.
 func (j *Job) ProcessJob(ctx context.Context, args ...interface{}) error {
 	totalAttempts := j.Retries + 1
@@ -185,6 +167,28 @@ func (m *JobManager) Printf(message string, args ...interface{}) {
 	)
 }
 
+func (m *JobManager) setupJobDefaults(j *Job) {
+	if j == nil {
+		return
+	}
+	if j.Name == "" {
+		j.Name = "anonymous-job"
+	}
+	if j.RetryFunc == nil {
+		j.RetryFunc = ExponentialBackoff
+	}
+	if j.Logger == nil {
+		j.Logger = log.New(os.Stdout, "", log.LstdFlags)
+	}
+	if j.ErrorHandler == nil {
+		if m.ErrorHandler == nil {
+			j.ErrorHandler = DoNothingWithErrors
+		} else {
+			j.ErrorHandler = m.ErrorHandler
+		}
+	}
+}
+
 // AddJob adds a Job to the Job manager.
 func (m *JobManager) AddJob(j *Job, args ...interface{}) {
 	m.Lock()
@@ -193,7 +197,7 @@ func (m *JobManager) AddJob(j *Job, args ...interface{}) {
 	if j == nil {
 		return
 	}
-	j.setupJobDefaults()
+	m.setupJobDefaults(j)
 	m.jobs = append(m.jobs, j)
 	m.jobArgs = append(m.jobArgs, args)
 }
