@@ -3,6 +3,8 @@ package drift
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"sort"
 	"strconv"
 	"sync"
@@ -200,6 +202,7 @@ func (dd *DynamoDrifter) runCallbacks(ctx context.Context, migration *DynamoDrif
 		jm.ErrorHandler = &ec
 		jm.Concurrency = concurrency
 		jm.Identifier = "migration-callbacks"
+		jm.Logger = log.New(ioutil.Discard, "", log.LstdFlags)
 	}
 	getnewjm()
 	si := &dynamodb.ScanInput{
@@ -297,6 +300,7 @@ func (dd *DynamoDrifter) executeActions(ctx context.Context, migration *DynamoDr
 		jm.ErrorHandler = &ec
 		jm.Concurrency = concurrency
 		jm.Identifier = "migration-actions"
+		jm.Logger = log.New(ioutil.Discard, "", log.LstdFlags)
 	}
 	getnewjm()
 	var i int
