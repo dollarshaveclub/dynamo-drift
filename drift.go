@@ -512,6 +512,8 @@ func (da *DrifterAction) Insert(item interface{}, tableName string) error {
 	var err error
 	var mitem map[string]*dynamodb.AttributeValue
 	switch v := item.(type) {
+	case RawDynamoItem:
+		mitem = v
 	case map[string]*dynamodb.AttributeValue:
 		mitem = v
 	default:
