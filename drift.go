@@ -473,13 +473,29 @@ type DrifterAction struct {
 //
 // Optional: expressionAttributeNames, tableName (defaults to migration table)
 func (da *DrifterAction) Update(keys interface{}, values interface{}, updateExpression string, expressionAttributeNames map[string]string, tableName string) error {
-	mkeys, err := dynamodbattribute.MarshalMap(keys)
-	if err != nil {
-		return fmt.Errorf("error marshaling keys: %v", err)
+	var err error
+	var mkeys, mvals map[string]*dynamodb.AttributeValue
+	switch v := keys.(type) {
+	case map[string]*dynamodb.AttributeValue:
+		mkeys = v
+	case RawDynamoItem:
+		mkeys = v
+	default:
+		mkeys, err = dynamodbattribute.MarshalMap(keys)
+		if err != nil {
+			return fmt.Errorf("error marshaling keys: %v", err)
+		}
 	}
-	mvals, err := dynamodbattribute.MarshalMap(values)
-	if err != nil {
-		return fmt.Errorf("error marshaling values: %v", err)
+	switch v := values.(type) {
+	case map[string]*dynamodb.AttributeValue:
+		mvals = v
+	case RawDynamoItem:
+		mvals = v
+	default:
+		mvals, err = dynamodbattribute.MarshalMap(values)
+		if err != nil {
+			return fmt.Errorf("error marshaling values: %v", err)
+		}
 	}
 	if updateExpression == "" {
 		return fmt.Errorf("updateExpression is required")
@@ -537,9 +553,18 @@ func (da *DrifterAction) Insert(item interface{}, tableName string) error {
 // keys is an arbitrary struct with "dynamodbav" annotations.
 // tableName is optional (defaults to migration table).
 func (da *DrifterAction) Delete(keys interface{}, tableName string) error {
-	mkeys, err := dynamodbattribute.MarshalMap(keys)
-	if err != nil {
-		return fmt.Errorf("error marshaling keys: %v", err)
+	var err error
+	var mkeys map[string]*dynamodb.AttributeValue
+	switch v := keys.(type) {
+	case map[string]*dynamodb.AttributeValue:
+		mkeys = v
+	case RawDynamoItem:
+		mkeys = v
+	default:
+		mkeys, err = dynamodbattribute.MarshalMap(keys)
+		if err != nil {
+			return fmt.Errorf("error marshaling keys: %v", err)
+		}
 	}
 	dla := action{
 		atype:     deleteAction,
